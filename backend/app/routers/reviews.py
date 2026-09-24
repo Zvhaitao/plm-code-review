@@ -9,11 +9,13 @@ from ..models import Repository, Review
 from ..schemas import (
     AuthorFacet,
     CheckResult,
+    CommitDiffOut,
     RepoFacet,
     ReviewDetailOut,
     ReviewFacets,
     ReviewOut,
 )
+from ..services.git_service import GitError, commit_changes
 from ..services.worker import check_repository, process_pending_reviews, run_review
 
 router = APIRouter(prefix="/api/reviews", tags=["reviews"], dependencies=[Depends(get_current_user)])
@@ -95,6 +97,26 @@ def rerun_review(review_id: int, background: BackgroundTasks, db: Session = Depe
     db.refresh(review)
     background.add_task(run_review, review_id)
     return review
+
+
+@router.get("/{review_id}/diff", response_model=CommitDiffOut)
+def get_review_diff(review_id: int, db: Session = Depends(get_db)):
+    """本次提交相对父提交的改动(结构化 diff,供前端展示)。"""
+    review = db.scalar(
+        select(Review).where(Review.id == review_id).options(selectinload(Review.repository))
+    )
+    if review is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评审不存在")
+    repo = review.repository
+    if repo is None or not repo.local_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该仓库未配置本地路径")
+    try:
+        changes = commit_changes(repo.local_path, review.commit_sha)
+    except GitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"读取提交改动失败: {exc}"
+        ) from exc
+    return changes
 
 
 @router.get("/{review_id}", response_model=ReviewDetailOut)

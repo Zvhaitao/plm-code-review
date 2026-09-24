@@ -95,6 +95,31 @@ class CheckResult(BaseModel):
     message: str
 
 
+# --- 提交改动(diff) ---
+class FileDiffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    path: str
+    old_path: str = ""
+    status: str  # added / modified / deleted / renamed
+    additions: int = 0
+    deletions: int = 0
+    patch: str = ""
+    binary: bool = False
+    truncated: bool = False
+
+
+class CommitDiffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sha: str
+    parent_sha: str = ""
+    author: str = ""
+    message: str = ""
+    files_changed: int = 0
+    insertions: int = 0
+    deletions: int = 0
+    files: list[FileDiffOut] = []
+
+
 # --- 分类维度 ---
 class RepoFacet(BaseModel):
     id: int

@@ -84,3 +84,25 @@ export interface ReviewFacets {
   authors: { name: string; review_count: number }[]
   pending_count: number
 }
+
+export interface FileDiff {
+  path: string
+  old_path: string
+  status: string // added / modified / deleted / renamed
+  additions: number
+  deletions: number
+  patch: string
+  binary: boolean
+  truncated: boolean
+}
+
+export interface CommitDiff {
+  sha: string
+  parent_sha: string
+  author: string
+  message: string
+  files_changed: number
+  insertions: number
+  deletions: number
+  files: FileDiff[]
+}

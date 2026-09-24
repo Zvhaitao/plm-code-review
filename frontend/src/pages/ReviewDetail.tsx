@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, Descriptions, Tag, Typography, Spin, Alert, Empty, Steps } from 'antd'
 import { api, ReviewDetail as ReviewDetailType, Finding } from '../api/client'
+import CommitDiffView from '../components/CommitDiffView'
 
 const MONO = '"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Liberation Mono",ui-monospace,monospace'
 
@@ -283,6 +284,10 @@ export default function ReviewDetail() {
           </Typography.Paragraph>
         )}
         {review.error && <Alert style={{ marginTop: '1rem' }} type="error" message={review.error} showIcon />}
+      </Card>
+
+      <Card title="本次改动" size="small">
+        {id && <CommitDiffView reviewId={id} />}
       </Card>
 
       {running ? (
