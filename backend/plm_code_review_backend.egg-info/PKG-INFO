@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: plm-code-review-backend
+Version: 0.1.0
+Summary: 自动代码评审 Agent 平台 - 后端 (FastAPI + Claude)
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.30
+Requires-Dist: anthropic>=0.40
+Requires-Dist: httpx>=0.27
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pydantic-settings>=2.3
+Requires-Dist: bcrypt>=4.1
+Requires-Dist: python-multipart>=0.0.9
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Requires-Dist: respx>=0.21; extra == "dev"
