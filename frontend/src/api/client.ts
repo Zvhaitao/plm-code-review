@@ -75,8 +75,24 @@ export interface Review {
   finished_at: string | null
 }
 
+export interface LintIssue {
+  id: number
+  file_path: string
+  line: number | null
+  column: number | null
+  rule_id: string
+  severity: string // error / warning
+  message: string
+  on_changed_line: boolean
+  rule_desc: string
+  rule_url: string
+  code_context: string
+  context_start: number | null
+}
+
 export interface ReviewDetail extends Review {
   findings: Finding[]
+  lint_issues: LintIssue[]
 }
 
 export interface ReviewFacets {

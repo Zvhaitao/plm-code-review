@@ -85,8 +85,25 @@ class ReviewOut(BaseModel):
     finished_at: datetime | None
 
 
+class LintIssueOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    file_path: str
+    line: int | None = None
+    column: int | None = None
+    rule_id: str = ""
+    severity: str  # error / warning
+    message: str = ""
+    on_changed_line: bool = False
+    rule_desc: str = ""
+    rule_url: str = ""
+    code_context: str = ""
+    context_start: int | None = None
+
+
 class ReviewDetailOut(ReviewOut):
     findings: list[FindingOut] = []
+    lint_issues: list[LintIssueOut] = []
 
 
 class CheckResult(BaseModel):

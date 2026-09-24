@@ -17,7 +17,7 @@ from ..schemas import (
     ReviewOut,
 )
 from ..services.git_service import GitError, commit_changes
-from ..services.worker import check_repository, process_pending_reviews, run_review
+from ..services.worker import check_repository, process_pending_reviews, run_lint, run_review
 
 router = APIRouter(prefix="/api/reviews", tags=["reviews"], dependencies=[Depends(get_current_user)])
 
@@ -134,10 +134,22 @@ def get_review_diff(review_id: int, db: Session = Depends(get_db)):
 @router.get("/{review_id}", response_model=ReviewDetailOut)
 def get_review(review_id: int, db: Session = Depends(get_db)):
     review = db.scalar(
-        select(Review).where(Review.id == review_id).options(selectinload(Review.findings))
+        select(Review)
+        .where(Review.id == review_id)
+        .options(selectinload(Review.findings), selectinload(Review.lint_issues))
     )
     if review is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评审不存在")
+    return review
+
+
+@router.post("/{review_id}/lint", response_model=ReviewOut, status_code=status.HTTP_202_ACCEPTED)
+def lint_review(review_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """按需对单条评审重跑 ESLint 静态检查(后台执行,不重跑 LLM,不消耗模型额度)。"""
+    review = db.get(Review, review_id)
+    if review is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评审不存在")
+    background.add_task(run_lint, review_id)
     return review
 
 

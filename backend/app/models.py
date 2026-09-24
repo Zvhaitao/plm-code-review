@@ -1,7 +1,7 @@
 """ORM 数据模型。"""
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -63,6 +63,7 @@ class Review(Base):
 
     repository: Mapped["Repository"] = relationship(back_populates="reviews")
     findings: Mapped[list["Finding"]] = relationship(back_populates="review", cascade="all, delete-orphan")
+    lint_issues: Mapped[list["LintIssue"]] = relationship(back_populates="review", cascade="all, delete-orphan")
 
     @property
     def repository_name(self) -> str:
@@ -83,3 +84,25 @@ class Finding(Base):
     existing_code: Mapped[str] = mapped_column(Text, default="")  # 原代码片段(用于对比展示)
 
     review: Mapped["Review"] = relationship(back_populates="findings")
+
+
+class LintIssue(Base):
+    """ESLint 静态检查发现的单条问题(平台自带 ESLint,与 LLM 评审互补)。"""
+
+    __tablename__ = "lint_issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("reviews.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(512), default="")
+    line: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    column: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rule_id: Mapped[str] = mapped_column(String(128), default="")
+    severity: Mapped[str] = mapped_column(String(16), default="warning")  # error/warning
+    message: Mapped[str] = mapped_column(Text, default="")
+    on_changed_line: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否落在本次改动的新增行上
+    rule_desc: Mapped[str] = mapped_column(Text, default="")   # 规则说明(来自 ESLint 规则元信息)
+    rule_url: Mapped[str] = mapped_column(String(512), default="")  # 规则文档链接
+    code_context: Mapped[str] = mapped_column(Text, default="")  # 问题所在的代码片段(前后若干行)
+    context_start: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 代码片段首行的行号
+
+    review: Mapped["Review"] = relationship(back_populates="lint_issues")

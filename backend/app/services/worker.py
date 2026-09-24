@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from ..db import SessionLocal
-from ..models import Finding, Repository, Review
-from .git_service import GitError, commit_diff, head_sha, new_commits, pull
+from ..models import Finding, LintIssue, Repository, Review
+from .git_service import GitError, commit_changes, commit_diff, head_sha, new_commits, pull
+from .lint_service import LintNotAvailable, lint_commit
 from .ocr_engine import OcrNotAvailable, run_ocr_review
 from .review_engine import ReviewEngineError, run_claude_review
 
@@ -218,11 +219,61 @@ def run_review(review_id: int) -> None:
         review.finished_at = datetime.now(timezone.utc)
         review.error = ""
         db.commit()
+
+        # 静态检查(ESLint):best-effort,失败不影响评审结果
+        _run_lint_into(db, review)
     except Exception:  # noqa: BLE001
         logger.exception("run_review 未预期异常 review_id=%s", review_id)
         review = db.get(Review, review_id)
         if review is not None:
             _fail(db, review, "内部错误,详见服务日志")
+    finally:
+        db.close()
+
+
+def _run_lint_into(db, review: Review) -> None:
+    """对评审对应的提交跑 ESLint 静态检查并落库。best-effort,异常只记日志。"""
+    try:
+        repo = review.repository
+        if repo is None or not repo.local_path or not review.commit_sha:
+            return
+        changes = commit_changes(repo.local_path, review.commit_sha)
+        issues = lint_commit(repo.local_path, review.commit_sha, changes.files)
+        review.lint_issues.clear()
+        for it in issues:
+            review.lint_issues.append(
+                LintIssue(
+                    file_path=it.file_path,
+                    line=it.line,
+                    column=it.column,
+                    rule_id=it.rule_id,
+                    severity=it.severity,
+                    message=it.message,
+                    on_changed_line=it.on_changed_line,
+                    rule_desc=it.rule_desc,
+                    rule_url=it.rule_url,
+                    code_context=it.code_context,
+                    context_start=it.context_start,
+                )
+            )
+        db.commit()
+        logger.info("静态检查完成 review_id=%s:%s 条问题", review.id, len(issues))
+    except (LintNotAvailable, GitError) as exc:
+        logger.warning("静态检查跳过 review_id=%s: %s", review.id, exc)
+        db.rollback()
+    except Exception:  # noqa: BLE001
+        logger.exception("静态检查未预期异常 review_id=%s", review.id)
+        db.rollback()
+
+
+def run_lint(review_id: int) -> None:
+    """按需对已存在的评审重跑静态检查(不重跑 LLM)。"""
+    db = SessionLocal()
+    try:
+        review = db.get(Review, review_id)
+        if review is None:
+            return
+        _run_lint_into(db, review)
     finally:
         db.close()
 

@@ -36,6 +36,10 @@ def _add_missing_columns() -> None:
         ("reviews", "stage", "VARCHAR(32) DEFAULT ''"),
         ("reviews", "stage_detail", "VARCHAR(300) DEFAULT ''"),
         ("reviews", "tool_summary", "TEXT DEFAULT ''"),
+        ("lint_issues", "rule_desc", "TEXT DEFAULT ''"),
+        ("lint_issues", "rule_url", "VARCHAR(512) DEFAULT ''"),
+        ("lint_issues", "code_context", "TEXT DEFAULT ''"),
+        ("lint_issues", "context_start", "INTEGER"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

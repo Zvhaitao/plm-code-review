@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Card, Descriptions, Tag, Typography, Spin, Alert, Empty, Steps } from 'antd'
-import { api, ReviewDetail as ReviewDetailType, Finding } from '../api/client'
+import { Card, Descriptions, Tag, Typography, Spin, Alert, Empty, Steps, Segmented, Button, message } from 'antd'
+import { api, ReviewDetail as ReviewDetailType, Finding, LintIssue } from '../api/client'
 import CommitDiffView from '../components/CommitDiffView'
 
 const MONO = '"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Liberation Mono",ui-monospace,monospace'
@@ -191,6 +191,211 @@ function RunningPanel({ review }: { review: ReviewDetailType }) {
   )
 }
 
+const LINT_SEVERITY: Record<string, { bg: string; fg: string; label: string }> = {
+  error: { bg: '#fff7ed', fg: '#c2410c', label: 'ERROR' },
+  warning: { bg: '#fefce8', fg: '#a16207', label: 'WARNING' },
+}
+
+function LintPanel({ reviewId, issues, running }: { reviewId: string; issues: LintIssue[]; running: boolean }) {
+  const [onlyChanged, setOnlyChanged] = useState(false)
+  const [linting, setLinting] = useState(false)
+
+  const errorCount = issues.filter((i) => i.severity === 'error').length
+  const warnCount = issues.filter((i) => i.severity === 'warning').length
+  const shown = onlyChanged ? issues.filter((i) => i.on_changed_line) : issues
+
+  // 按文件分组
+  const byFile = new Map<string, LintIssue[]>()
+  for (const i of shown) {
+    const arr = byFile.get(i.file_path) || []
+    arr.push(i)
+    byFile.set(i.file_path, arr)
+  }
+
+  const runLint = async () => {
+    setLinting(true)
+    try {
+      await api.post(`/api/reviews/${reviewId}/lint`)
+      message.success('已开始静态检查,稍后刷新查看结果')
+    } catch {
+      message.error('静态检查启动失败')
+    } finally {
+      setLinting(false)
+    }
+  }
+
+  const title = (
+    <span>
+      静态检查 (ESLint)
+      {issues.length > 0 && (
+        <span style={{ marginLeft: '0.6rem', fontSize: '0.8rem', fontWeight: 400 }}>
+          {errorCount > 0 && <span style={{ color: '#c2410c' }}>{errorCount} error</span>}
+          {errorCount > 0 && warnCount > 0 && ' · '}
+          {warnCount > 0 && <span style={{ color: '#a16207' }}>{warnCount} warning</span>}
+        </span>
+      )}
+    </span>
+  )
+
+  const extra = (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      {issues.length > 0 && (
+        <Segmented
+          size="small"
+          value={onlyChanged ? 'changed' : 'all'}
+          onChange={(v) => setOnlyChanged(v === 'changed')}
+          options={[
+            { label: '全部', value: 'all' },
+            { label: '仅本次改动行', value: 'changed' },
+          ]}
+        />
+      )}
+      <Button size="small" onClick={runLint} loading={linting}>
+        重新检查
+      </Button>
+    </span>
+  )
+
+  return (
+    <Card title={title} size="small" extra={running ? undefined : extra}>
+      {issues.length === 0 ? (
+        <Empty description="没有发现 ESLint 问题(或该提交无可检查的 JS/TS 文件)">
+          <Button type="primary" onClick={runLint} loading={linting}>
+            运行静态检查
+          </Button>
+        </Empty>
+      ) : shown.length === 0 ? (
+        <Empty description="本次改动行上没有 ESLint 问题" />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {[...byFile.entries()].map(([file, list]) => (
+            <div key={file}>
+              <div style={{ fontFamily: MONO, fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.4rem', wordBreak: 'break-all' }}>
+                {file} <span style={{ color: 'rgba(0,0,0,0.45)', fontWeight: 400 }}>({list.length})</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {list.map((i) => (
+                  <LintRow key={i.id} issue={i} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function LintRow({ issue }: { issue: LintIssue }) {
+  const sev = LINT_SEVERITY[issue.severity] || LINT_SEVERITY.warning
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'where' | 'why'>('where')
+  const hasDetail = !!(issue.code_context || issue.rule_desc || issue.rule_url)
+
+  return (
+    <div
+      style={{
+        background: '#fafafa',
+        border: '1px solid rgba(0,0,0,0.06)',
+        borderRadius: 6,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        onClick={() => hasDetail && setOpen((v) => !v)}
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          padding: '0.4rem 0.6rem',
+          cursor: hasDetail ? 'pointer' : 'default',
+        }}
+      >
+        {hasDetail && (
+          <span style={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.4)', transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none' }}>
+            ▶
+          </span>
+        )}
+        <Badge text={sev.label} colors={sev} />
+        <span style={{ fontFamily: MONO, fontSize: '0.72rem', color: 'rgba(0,0,0,0.5)' }}>
+          {issue.line ?? '?'}:{issue.column ?? '?'}
+        </span>
+        <span style={{ fontSize: '0.85rem', color: 'rgba(0,0,0,0.85)', flex: 1, minWidth: '12rem' }}>{issue.message}</span>
+        {issue.rule_id && (
+          <span style={{ fontFamily: MONO, fontSize: '0.7rem', color: '#7c3aed', background: '#f5f3ff', padding: '0.1em 0.45em', borderRadius: 4 }}>
+            {issue.rule_id}
+          </span>
+        )}
+        {issue.on_changed_line && <Badge text="本次改动" colors={{ bg: '#eff6ff', fg: '#2563eb' }} />}
+      </div>
+
+      {open && hasDetail && (
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', background: '#fff' }}>
+          <Segmented
+            size="small"
+            value={tab}
+            onChange={(v) => setTab(v as 'where' | 'why')}
+            style={{ margin: '0.6rem 0.6rem 0' }}
+            options={[
+              { label: '问题位置', value: 'where' },
+              { label: '为什么是问题', value: 'why', disabled: !(issue.rule_desc || issue.rule_url) },
+            ]}
+          />
+          <div style={{ padding: '0.6rem' }}>
+            {tab === 'where' ? (
+              issue.code_context ? (
+                <CodeContext code={issue.code_context} start={issue.context_start} hlLine={issue.line} />
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'rgba(0,0,0,0.45)' }}>无代码片段</span>
+              )
+            ) : (
+              <div style={{ fontSize: '0.85rem', lineHeight: 1.7 }}>
+                {issue.rule_desc && <p style={{ margin: '0 0 0.6rem' }}>{issue.rule_desc}</p>}
+                {issue.rule_url && (
+                  <a href={issue.rule_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem' }}>
+                    查看规则文档 ({issue.rule_id}) ↗
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CodeContext({ code, start, hlLine }: { code: string; start: number | null; hlLine: number | null }) {
+  const lines = code.split('\n')
+  const base = start ?? 1
+  return (
+    <div style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
+      <pre style={{ margin: 0, fontSize: '0.76rem', lineHeight: 1.6, overflowX: 'auto', fontFamily: MONO, background: '#f8f8f8' }}>
+        {lines.map((ln, idx) => {
+          const num = base + idx
+          const isHl = hlLine != null && num === hlLine
+          return (
+            <div
+              key={num}
+              style={{
+                display: 'flex',
+                background: isHl ? '#fff1e6' : 'transparent',
+                borderLeft: isHl ? '3px solid #ea580c' : '3px solid transparent',
+              }}
+            >
+              <span style={{ display: 'inline-block', width: '3rem', textAlign: 'right', paddingRight: '0.75rem', color: 'rgba(0,0,0,0.35)', userSelect: 'none', flexShrink: 0 }}>
+                {num}
+              </span>
+              <code style={{ whiteSpace: 'pre', paddingRight: '0.75rem' }}>{ln || ' '}</code>
+            </div>
+          )
+        })}
+      </pre>
+    </div>
+  )
+}
+
 export default function ReviewDetail() {
   const { id } = useParams<{ id: string }>()
   const [review, setReview] = useState<ReviewDetailType | null>(null)
@@ -289,6 +494,8 @@ export default function ReviewDetail() {
       <Card title="本次改动" size="small">
         {id && <CommitDiffView reviewId={id} />}
       </Card>
+
+      {id && !running && <LintPanel reviewId={id} issues={review.lint_issues || []} running={running} />}
 
       {running ? (
         <RunningPanel review={review} />

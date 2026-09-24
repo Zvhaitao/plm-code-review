@@ -1,0 +1,13 @@
+{
+  "name": "plm-eslint-runner",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "平台自带的 ESLint 运行器:对提交时刻的文件内容做静态检查(供后端 subprocess 调用)。",
+  "dependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "typescript-eslint": "^8.10.0"
+  }
+}
