@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth import get_current_user
+from ..config import get_settings
 from ..db import get_db
 from ..models import Repository, Review
 from ..schemas import (
@@ -38,25 +39,36 @@ def list_reviews(
         stmt = stmt.where(Review.repository_id == repository_id)
     if commit_author:
         stmt = stmt.where(Review.commit_author == commit_author)
+    else:
+        hidden = get_settings().hidden_authors
+        if hidden:
+            stmt = stmt.where(Review.commit_author.notin_(hidden))
     return db.scalars(stmt).all()
 
 
 @router.get("/facets", response_model=ReviewFacets)
 def review_facets(db: Session = Depends(get_db)):
     """分类维度:各仓库、各提交人的评审数量,用于前端筛选。"""
+    hidden = get_settings().hidden_authors
     repo_rows = db.execute(
         select(Repository.id, Repository.gitea_owner, Repository.gitea_name, func.count(Review.id))
         .outerjoin(Review, Review.repository_id == Repository.id)
         .group_by(Repository.id)
         .order_by(func.count(Review.id).desc())
     ).all()
-    author_rows = db.execute(
+    author_stmt = (
         select(Review.commit_author, func.count(Review.id))
         .where(Review.commit_author != "")
         .group_by(Review.commit_author)
         .order_by(func.count(Review.id).desc())
-    ).all()
-    pending_count = db.scalar(select(func.count(Review.id)).where(Review.status == "pending")) or 0
+    )
+    if hidden:
+        author_stmt = author_stmt.where(Review.commit_author.notin_(hidden))
+    author_rows = db.execute(author_stmt).all()
+    pending_stmt = select(func.count(Review.id)).where(Review.status == "pending")
+    if hidden:
+        pending_stmt = pending_stmt.where(Review.commit_author.notin_(hidden))
+    pending_count = db.scalar(pending_stmt) or 0
     return ReviewFacets(
         repositories=[
             RepoFacet(id=rid, name=f"{owner}/{name}", review_count=cnt)

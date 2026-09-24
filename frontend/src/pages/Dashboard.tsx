@@ -148,7 +148,7 @@ export default function Dashboard() {
             title: '操作',
             width: 90,
             render: (_, r) =>
-              r.status === 'running' ? null : (
+              r.status === 'running' || r.status === 'succeeded' ? null : (
                 <Button
                   size="small"
                   type="link"

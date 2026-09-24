@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     ocr_bin: str = "ocr"  # ocr CLI 可执行文件路径或命令名
     ocr_timeout_minutes: int = 15  # 单个提交评审超时
 
+    # --- 看板过滤 ---
+    # 隐藏这些提交人的评审(逗号分隔),如 CI 机器人自动构建提交;默认隐藏 robot
+    hidden_commit_authors: str = "robot"
+
+    @property
+    def hidden_authors(self) -> set[str]:
+        return {a.strip() for a in self.hidden_commit_authors.split(",") if a.strip()}
+
     # --- CORS ---
     frontend_origin: str = "http://localhost:5173"
 
